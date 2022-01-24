@@ -1,4 +1,4 @@
-import Lean.Data.rat
+import Lean.Data.Rat
 
 -- Arithmetic for dimensional calculus
 namespace DimensionalAnalysis
