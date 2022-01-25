@@ -39,12 +39,17 @@ macro_rules
 #check `[DCalc| x*y^2/1]
 #eval `[DCalc| x^3/1*y^-2/1]
 
-
-
 structure DCalcFactor where
   (symbol: String)
   (exp: Lean.Rat)
   deriving Repr
+
+namespace DCalcFactor
+
+def mult (f: DCalcFactor) (e: Lean.Rat) : DCalcFactor :=
+  DCalcFactor.mk f.symbol (f.exp.mul e)
+
+end DCalcFactor
 
 inductive DCalcExpr : Type
   | factors: Array DCalcFactor -> DCalcExpr
@@ -65,13 +70,17 @@ def simplify : DCalcExpr -> DCalcExpr
   | DCalcExpr.power x e => 
     match x with
     | DCalcExpr.factors fs => 
-      DCalcExpr.power (DCalcExpr.factors fs) e
+      let es := fs.map fun f => f.mult e
+      DCalcExpr.factors es
     | x' => 
-      DCalcExpr.power x' e
+      DCalcExpr.power (simplify x') e
   | d => d
 
+#eval `[DCalc| (x ^ 7/2)]
+#eval `[DCalc| (x ^ 7/2)^1/4]
+#eval simplify (simplify (convert `[DCalc| (x ^ 7/2)^1/4]))
 #eval simplify (convert `[DCalc| x ^ 7/2 ] )
-#eval simplify (convert `[DCalc| x ^ 6/2 ] )
+#eval simplify (convert `[DCalc| (x ^ 6/2)^1/1 ] )
 #eval simplify (convert `[DCalc| x^-3/1*y^2/1] )
 
 
