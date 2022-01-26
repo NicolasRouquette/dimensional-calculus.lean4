@@ -30,15 +30,6 @@ macro_rules
   | `(`[DCalc| $x:dcalc ^ $n:numLit / $d:numLit ]) => `(DCalc.power `[DCalc| $x] (Lean.mkRat $n $d))
   | `(`[DCalc| $x:dcalc ^ - $n:numLit / $d:numLit ]) => `(DCalc.power `[DCalc| $x] (Lean.mkRat ( - $n ) $d))
 
-#check `[DCalc| x ] 
-#check `[DCalc| (x) ] 
-#check `[DCalc| x * y ] 
-#check `[DCalc| x / y ]
-#check `[DCalc| x ^ 1/1 ]
-#check `[DCalc| x^-1/1 ]
-#check `[DCalc| x*y^2/1]
-#eval `[DCalc| x^3/1*y^-2/1]
-
 structure DCalcFactor where
   (symbol: String)
   (exp: Lean.Rat)
@@ -46,6 +37,10 @@ structure DCalcFactor where
 
 instance : Inhabited DCalcFactor where
   default := DCalcFactor.mk "" (Lean.mkRat 1 1)
+
+instance : ToString (Array DCalcFactor) where
+  toString fs := s!"{fs.map repr}"
+
 namespace DCalcFactor
 
 def mult (f: DCalcFactor) (e: Lean.Rat) : DCalcFactor :=
@@ -120,15 +115,5 @@ def simplify : DCalcExpr -> Array DCalcFactor
     DCalcExpr.applyDiv (simplify d1) (simplify d2)
   | DCalcExpr.power x e => 
     DCalcExpr.applyPow (simplify x) e
-
-#eval `[DCalc| (x ^ 7/2)]
-#eval convert `[DCalc| x ^ 7/2 ]
-#eval `[DCalc| (x ^ 7/2)^1/4]
-#eval simplify (convert `[DCalc| (x ^ 7/2)^1/4])
-#eval simplify (convert `[DCalc| x ^ 7/2 ] )
-#eval simplify (convert `[DCalc| (x ^ 6/2)^1/1 ] )
-#eval convert `[DCalc| x^-3/1*y^2/1] 
-#eval simplify (convert `[DCalc| x^-3/1*y^2/1] )
-
 
 end DimensionalAnalysis
