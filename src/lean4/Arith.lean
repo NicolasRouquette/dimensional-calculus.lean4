@@ -133,7 +133,6 @@ partial def substitute (ctx: Context) (fs: DCalcFactors) : DCalcFactors :=
       let ts := substitute ctx tail
       DCalcExpr.applyMul #[ v ] ts
 
-
 -- How can we define this instance?
 -- instance : MonadExcept IO.Error (AssocList String) := ???
 
@@ -146,6 +145,6 @@ def withDerivation (ctx: Context) (symbol: String) (exp: DCalc) : Context :=
     -- throw <| IO.userError s!"Derived symbol already in the context: {symbol}"
     ctx
   else
-    ctx.insert symbol (DimensionalAnalysis.simplify (DimensionalAnalysis.convert exp))
+    ctx.insert symbol (simplify (convert exp))
 
 end DimensionalAnalysis

@@ -55,16 +55,34 @@ def derived12 := withDerivation derived11 "pressure" `[DCalc| force / area ]
 -- iso-80000-4 2006:4-26
 def derived13 := withDerivation derived12 "power" `[DCalc| force * velocity ]
 
-def allDerivations := derived13
+-- iso-80000-4 2006:4-28
+def derived14 := withDerivation derived13 "power.efficiency" `[DCalc| power / power ]
 
-#eval simplify (convert `[DCalc| force / area ])
+def allDerivations := derived14
+
 def main : IO Unit := do
+  -- area=(some #[{ symbol := "length", exp := 2 }])
   IO.println s!"area={reduce allDerivations "area"}"
+
+  -- velocity=(some #[{ symbol := "length", exp := 1 }, { symbol := "time", exp := -1 }])
   IO.println s!"velocity={reduce allDerivations "velocity"}"
+
+  -- acceleration=(some #[{ symbol := "length", exp := 1 }, { symbol := "time", exp := -2 }])
   IO.println s!"acceleration={reduce allDerivations "acceleration"}"
+
+  -- momentum=(some #[{ symbol := "mass", exp := 1 }, { symbol := "length", exp := 1 }, { symbol := "time", exp := -1 }])
   IO.println s!"momentum={reduce allDerivations "momentum"}"
+
+  -- force=(some #[{ symbol := "mass", exp := 1 }, { symbol := "length", exp := 1 }, { symbol := "time", exp := -2 }])
   IO.println s!"force={reduce allDerivations "force"}"
+
+  -- pressure=(some #[{ symbol := "mass", exp := 1 }, { symbol := "length", exp := -1 }, { symbol := "time", exp := -2 }])
   IO.println s!"pressure={reduce allDerivations "pressure"}"
+
+  -- power=(some #[{ symbol := "mass", exp := 1 }, { symbol := "length", exp := 2 }, { symbol := "time", exp := -3 }])
   IO.println s!"power={reduce allDerivations "power"}"
+
+  -- power.efficiency=(some #[{ symbol := "mass", exp := 0 }, { symbol := "length", exp := 0 }, { symbol := "time", exp := 0 }])
+  IO.println s!"power.efficiency={reduce allDerivations "power.efficiency"}"
 
 #eval main
