@@ -1,4 +1,6 @@
 import Lean.Data.Rat
+import Std.Data
+open Std
 
 -- Arithmetic for dimensional calculus
 namespace DimensionalAnalysis
@@ -38,7 +40,9 @@ structure DCalcFactor where
 instance : Inhabited DCalcFactor where
   default := DCalcFactor.mk "" (Lean.mkRat 1 1)
 
-instance : ToString (Array DCalcFactor) where
+abbrev DCalcFactors := Array DCalcFactor
+
+instance : ToString DCalcFactors where
   toString fs := s!"{fs.map repr}"
 
 namespace DCalcFactor
@@ -60,10 +64,10 @@ namespace DCalcExpr
 def powerOf (exp: Lean.Rat) (f: DCalcFactor) : DCalcFactor := 
   DCalcFactor.mk f.symbol (f.exp * exp)
 
-def applyPow (fs: Array DCalcFactor) (exp: Lean.Rat) : Array DCalcFactor :=
+def applyPow (fs: DCalcFactors) (exp: Lean.Rat) : DCalcFactors :=
   fs.map (powerOf exp)
 
-partial def applyMul (fs1: Array DCalcFactor) (fs2: Array DCalcFactor) : Array DCalcFactor :=
+partial def applyMul (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
   if 0 == fs2.size then
     fs1
   else
@@ -80,20 +84,19 @@ partial def applyMul (fs1: Array DCalcFactor) (fs2: Array DCalcFactor) : Array D
       let fs1b := (fs1.toSubarray (i+1)).toArray
       applyMul ((fs1a.append #[ f1b ]).append fs1b) f2tail
 
-partial def applyDiv (fs1: Array DCalcFactor) (fs2: Array DCalcFactor) : Array DCalcFactor :=
+partial def applyDiv (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
   if 0 == fs2.size then
     fs1
   else
     let f2 : DCalcFactor := fs2.get! 0
-    let f2m : DCalcFactor := DCalcFactor.mk f2.symbol ( - f2.exp )
     let f2tail := fs2.toSubarray 1
     let i1 : Option Nat := fs1.findIdx? fun f1 => f1.symbol == f2.symbol
     match i1 with
     | none =>
-      applyMul (fs1.append #[ f2m ]) f2tail
+      applyMul (fs1.append #[ DCalcFactor.mk f2.symbol ( - f2.exp ) ]) f2tail
     | some i =>
       let f1a := fs1.get! i
-      let f1b := DCalcFactor.mk f1a.symbol (f1a.exp + f2m.exp)
+      let f1b := DCalcFactor.mk f1a.symbol (f1a.exp - f2.exp)
       let fs1a := (fs1.toSubarray 0 i).toArray
       let fs1b := (fs1.toSubarray (i+1)).toArray
       applyMul ((fs1a.append #[ f1b ]).append fs1b) f2tail
@@ -106,7 +109,7 @@ def convert : DCalc -> DCalcExpr
   | DCalc.div x y => DCalcExpr.div (convert x) (convert y)
   | DCalc.power x exp=> DCalcExpr.power (convert x) exp
 
-def simplify : DCalcExpr -> Array DCalcFactor
+def simplify : DCalcExpr -> DCalcFactors
   | DCalcExpr.factors fs => 
     fs
   | DCalcExpr.mul m1 m2 =>
@@ -115,5 +118,34 @@ def simplify : DCalcExpr -> Array DCalcFactor
     DCalcExpr.applyDiv (simplify d1) (simplify d2)
   | DCalcExpr.power x e => 
     DCalcExpr.applyPow (simplify x) e
+
+abbrev Context := AssocList String DCalcFactors
+
+partial def substitute (ctx: Context) (fs: DCalcFactors) : DCalcFactors :=
+  if 0 == fs.size then
+    fs
+  else
+    let v := fs.get! 0
+    let tail := (fs.toSubarray 1).toArray
+    if let some vs := ctx.find? v.symbol then
+      substitute ctx (DCalcExpr.applyMul (DCalcExpr.applyPow vs v.exp) tail)
+    else
+      let ts := substitute ctx tail
+      DCalcExpr.applyMul #[ v ] ts
+
+
+-- How can we define this instance?
+-- instance : MonadExcept IO.Error (AssocList String) := ???
+
+def reduce (ctx: Context) (symbol: String): Option DCalcFactors :=
+  (ctx.find? symbol).map (substitute ctx)
+
+def withDerivation (ctx: Context) (symbol: String) (exp: DCalc) : Context :=
+  if ctx.contains symbol then
+    -- to throw, we need to define the instance above.
+    -- throw <| IO.userError s!"Derived symbol already in the context: {symbol}"
+    ctx
+  else
+    ctx.insert symbol (DimensionalAnalysis.simplify (DimensionalAnalysis.convert exp))
 
 end DimensionalAnalysis
