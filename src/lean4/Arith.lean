@@ -79,10 +79,10 @@ partial def applyMul (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
       applyMul (fs1.append #[ f2 ]) f2tail
     | some i =>
       let f1a := fs1.get! i
-      let f1b := DCalcFactor.mk f1a.symbol (f1a.exp + f2.exp)
+      let f12 := DCalcFactor.mk f1a.symbol (f1a.exp + f2.exp)
       let fs1a := (fs1.toSubarray 0 i).toArray
       let fs1b := (fs1.toSubarray (i+1)).toArray
-      applyMul ((fs1a.append #[ f1b ]).append fs1b) f2tail
+      applyMul ((if 0 == f12.exp.num then fs1a else fs1a.append #[ f12 ]).append fs1b) f2tail
 
 partial def applyDiv (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
   if 0 == fs2.size then
@@ -96,10 +96,10 @@ partial def applyDiv (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
       applyMul (fs1.append #[ DCalcFactor.mk f2.symbol ( - f2.exp ) ]) f2tail
     | some i =>
       let f1a := fs1.get! i
-      let f1b := DCalcFactor.mk f1a.symbol (f1a.exp - f2.exp)
+      let f12 := DCalcFactor.mk f1a.symbol (f1a.exp - f2.exp)
       let fs1a := (fs1.toSubarray 0 i).toArray
       let fs1b := (fs1.toSubarray (i+1)).toArray
-      applyMul ((fs1a.append #[ f1b ]).append fs1b) f2tail
+      applyMul ((if 0 == f12.exp.num then fs1a else fs1a.append #[ f12 ]).append fs1b) f2tail
 
 end DCalcExpr
 
@@ -119,7 +119,16 @@ def simplify : DCalcExpr -> DCalcFactors
   | DCalcExpr.power x e => 
     DCalcExpr.applyPow (simplify x) e
 
-abbrev Context := AssocList String DCalcFactors
+structure Context where
+  base : HashSet String
+  derived : HashMap String DCalcFactors
+
+namespace Context
+
+def empty : Context := ⟨ HashSet.empty, HashMap.empty ⟩
+
+instance : Inhabited Context where
+  default := empty
 
 partial def substitute (ctx: Context) (fs: DCalcFactors) : DCalcFactors :=
   if 0 == fs.size then
@@ -127,24 +136,34 @@ partial def substitute (ctx: Context) (fs: DCalcFactors) : DCalcFactors :=
   else
     let v := fs.get! 0
     let tail := (fs.toSubarray 1).toArray
-    if let some vs := ctx.find? v.symbol then
+    if let some vs := ctx.derived.find? v.symbol then
       substitute ctx (DCalcExpr.applyMul (DCalcExpr.applyPow vs v.exp) tail)
     else
       let ts := substitute ctx tail
       DCalcExpr.applyMul #[ v ] ts
 
--- How can we define this instance?
--- instance : MonadExcept IO.Error (AssocList String) := ???
-
 def reduce (ctx: Context) (symbol: String): Option DCalcFactors :=
-  (ctx.find? symbol).map (substitute ctx)
+  (ctx.derived.find? symbol).map (substitute ctx)
 
-def withDerivation (ctx: Context) (symbol: String) (exp: DCalc) : Context :=
-  if ctx.contains symbol then
-    -- to throw, we need to define the instance above.
-    -- throw <| IO.userError s!"Derived symbol already in the context: {symbol}"
-    ctx
+def withDerivation (ctx: Context) (symbol: String) (exp: DCalc) : Context := {
+  if ctx.derived.contains symbol then
+    panic! s!"Derived symbol already in the context: {symbol}"
   else
-    ctx.insert symbol (simplify (convert exp))
+    ctx with derived := ctx.derived.insert symbol (simplify (convert exp))
+}
+
+
+def addDerivation (ctx: Context) (pair: String × DCalc) : Context := {
+  if ctx.derived.contains pair.fst then
+    panic! s!"Derived symbol already in the context: {pair.fst}"
+  else
+    ctx with derived := ctx.derived.insert pair.fst (simplify (convert pair.snd))
+}
+
+def mkContext (derivations: Array (String × DCalc)) : Context :=
+  let ctx : Context := ⟨ HashSet.empty, HashMap.empty ⟩
+  derivations.foldl addDerivation ctx
+
+end Context
 
 end DimensionalAnalysis
