@@ -32,79 +32,77 @@ macro_rules
   | `(`[DCalc| $x:dcalc ^ $n:numLit / $d:numLit ]) => `(DCalc.power `[DCalc| $x] (Lean.mkRat $n $d))
   | `(`[DCalc| $x:dcalc ^ - $n:numLit / $d:numLit ]) => `(DCalc.power `[DCalc| $x] (Lean.mkRat ( - $n ) $d))
 
-structure DCalcFactor where
-  (symbol: String)
-  (exp: Lean.Rat)
-  deriving Repr
+abbrev DCalcFactor := String × Lean.Rat
 
-instance : Inhabited DCalcFactor where
-  default := DCalcFactor.mk "" (Lean.mkRat 1 1)
+abbrev DCalcFactors := HashMap String Lean.Rat
 
-abbrev DCalcFactors := Array DCalcFactor
+def lt (f1: DCalcFactor) (f2: DCalcFactor): Bool := 
+  f1.fst.data.le f2.fst.data
 
-instance : ToString DCalcFactors where
-  toString fs := s!"{fs.map repr}"
+instance : ToString (Option DCalcFactors) := ⟨fun
+  | none => "none"
+  | (some fs) => "(some " ++ (fs.toArray.qsort lt).toList.toString ++ ")"⟩
 
+def ToString (pair: String × Lean.Rat) : String :=
+  s!"{pair.fst}^{pair.snd}"
 namespace DCalcFactor
 
 def mult (f: DCalcFactor) (e: Lean.Rat) : DCalcFactor :=
-  DCalcFactor.mk f.symbol (f.exp.mul e)
+  ⟨ f.fst, (f.snd.mul e) ⟩
 
 end DCalcFactor
 
 inductive DCalcExpr : Type
-  | factors: Array DCalcFactor -> DCalcExpr
+  | factors: DCalcFactors -> DCalcExpr
   | mul : DCalcExpr -> DCalcExpr -> DCalcExpr
   | div : DCalcExpr -> DCalcExpr -> DCalcExpr
   | power : DCalcExpr -> Lean.Rat -> DCalcExpr
-  deriving Repr
 
 namespace DCalcExpr
 
 def powerOf (exp: Lean.Rat) (f: DCalcFactor) : DCalcFactor := 
-  DCalcFactor.mk f.symbol (f.exp * exp)
+  ⟨ f.fst, (f.snd * exp) ⟩
 
 def applyPow (fs: DCalcFactors) (exp: Lean.Rat) : DCalcFactors :=
-  fs.map (powerOf exp)
+  let ls : List DCalcFactor := fs.toList.map (powerOf exp)
+  HashMap.ofList ls
 
 partial def applyMul (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
   if 0 == fs2.size then
     fs1
   else
-    let f2 : DCalcFactor := fs2.get! 0
-    let f2tail := fs2.toSubarray 1
-    let i1 : Option Nat := fs1.findIdx? fun f1 => f1.symbol == f2.symbol
-    match i1 with
+    let l2 : List DCalcFactor := fs2.toList
+    let f2 := l2.head!
+    let f2tail := HashMap.ofList l2.tail!
+    match fs1.getOp f2.fst with
     | none =>
-      applyMul (fs1.append #[ f2 ]) f2tail
-    | some i =>
-      let f1a := fs1.get! i
-      let f12 := DCalcFactor.mk f1a.symbol (f1a.exp + f2.exp)
-      let fs1a := (fs1.toSubarray 0 i).toArray
-      let fs1b := (fs1.toSubarray (i+1)).toArray
-      applyMul ((if 0 == f12.exp.num then fs1a else fs1a.append #[ f12 ]).append fs1b) f2tail
+      applyMul (fs1.insert f2.fst f2.snd) f2tail
+    | some (f1a : Lean.Rat) =>
+      let f12 : DCalcFactor := ⟨ f2.fst, f1a + f2.snd ⟩
+      let fs1a := fs1.erase f2.fst
+      let fs1b := if 0 == f12.snd.num then fs1a else fs1a.insert f12.fst f12.snd
+      applyMul fs1b f2tail
 
 partial def applyDiv (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
   if 0 == fs2.size then
     fs1
   else
-    let f2 : DCalcFactor := fs2.get! 0
-    let f2tail := fs2.toSubarray 1
-    let i1 : Option Nat := fs1.findIdx? fun f1 => f1.symbol == f2.symbol
-    match i1 with
+    let l2 : List DCalcFactor := fs2.toList
+    let f2 := l2.head!
+    let f2tail := HashMap.ofList l2.tail!
+    match fs1.getOp f2.fst with
     | none =>
-      applyMul (fs1.append #[ DCalcFactor.mk f2.symbol ( - f2.exp ) ]) f2tail
-    | some i =>
-      let f1a := fs1.get! i
-      let f12 := DCalcFactor.mk f1a.symbol (f1a.exp - f2.exp)
-      let fs1a := (fs1.toSubarray 0 i).toArray
-      let fs1b := (fs1.toSubarray (i+1)).toArray
-      applyMul ((if 0 == f12.exp.num then fs1a else fs1a.append #[ f12 ]).append fs1b) f2tail
+      applyDiv (fs1.insert f2.fst (-f2.snd)) f2tail
+    | some (f1a : Lean.Rat) =>
+      let f12 : DCalcFactor := ⟨ f2.fst, f1a - f2.snd ⟩
+      let fs1a := fs1.erase f2.fst
+      let fs1b := if 0 == f12.snd.num then fs1a else fs1a.insert f12.fst f12.snd
+      applyDiv fs1b f2tail
 
 end DCalcExpr
 
 def convert : DCalc -> DCalcExpr
-  | DCalc.symbol x => DCalcExpr.factors #[ (DCalcFactor.mk x (Lean.mkRat 1 1)) ]
+  | DCalc.symbol x => DCalcExpr.factors (HashMap.ofList (List.cons ⟨ x, Lean.mkRat 1 1 ⟩ List.nil))
   | DCalc.mul x y => DCalcExpr.mul (convert x) (convert y)
   | DCalc.div x y => DCalcExpr.div (convert x) (convert y)
   | DCalc.power x exp=> DCalcExpr.power (convert x) exp
@@ -134,13 +132,13 @@ partial def substitute (ctx: Context) (fs: DCalcFactors) : DCalcFactors :=
   if 0 == fs.size then
     fs
   else
-    let v := fs.get! 0
-    let tail := (fs.toSubarray 1).toArray
-    if let some vs := ctx.derived.find? v.symbol then
-      substitute ctx (DCalcExpr.applyMul (DCalcExpr.applyPow vs v.exp) tail)
+    let v := fs.toList.head!
+    let tail := HashMap.ofList fs.toList.tail!
+    if let some vs := ctx.derived.find? v.fst then
+      substitute ctx (DCalcExpr.applyMul (DCalcExpr.applyPow vs v.snd) tail)
     else
       let ts := substitute ctx tail
-      DCalcExpr.applyMul #[ v ] ts
+      DCalcExpr.applyMul (HashMap.ofList (List.cons ⟨ v.fst, v.snd ⟩ List.nil)) ts
 
 def reduce (ctx: Context) (symbol: String): Option DCalcFactors :=
   (ctx.derived.find? symbol).map (substitute ctx)
