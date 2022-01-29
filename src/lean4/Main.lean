@@ -60,33 +60,37 @@ def isq : Context :=
   ]
 
 def main : IO Unit := do
-  -- area=(some #[{ symbol := "length", exp := 2 }])
+  -- area=(some [(length, 2)])
   IO.println s!"area={isq.reduce "area"}"
 
-  -- angle=(some #[{ symbol := "length", exp := 0 }])
+  -- angle=(some [])
   IO.println s!"angle={isq.reduce "angle"}"
 
-  -- velocity=(some #[{ symbol := "length", exp := 1 }, { symbol := "time", exp := -1 }])
+  -- velocity=(some [(length, 1), (time, -1)])
   IO.println s!"velocity={isq.reduce "velocity"}"
 
-  -- acceleration=(some #[{ symbol := "length", exp := 1 }, { symbol := "time", exp := -2 }])
+  -- acceleration=(some [(length, 1), (time, -2)])
   IO.println s!"acceleration={isq.reduce "acceleration"}"
 
-  -- momentum=(some #[{ symbol := "mass", exp := 1 }, { symbol := "length", exp := 1 }, { symbol := "time", exp := -1 }])
+  -- (some [(length, 1), (mass, 1), (time, -1)])
   IO.println s!"momentum={isq.reduce "momentum"}"
 
-  -- force=(some #[{ symbol := "mass", exp := 1 }, { symbol := "length", exp := 1 }, { symbol := "time", exp := -2 }])
+  -- force=(some [(length, 1), (mass, 1), (time, -2)])
   IO.println s!"force={isq.reduce "force"}"
 
-  -- pressure=(some #[{ symbol := "mass", exp := 1 }, { symbol := "length", exp := -1 }, { symbol := "time", exp := -2 }])
+  -- pressure=(some [(length, -1), (mass, 1), (time, -2)])
   IO.println s!"pressure={isq.reduce "pressure"}"
 
+  -- pressure/mass=(some [(length, -1), (time, -2)])
   IO.println s!"pressure/mass={isq.reduce "pressure/mass"}"
 
-  -- power=(some #[{ symbol := "mass", exp := 1 }, { symbol := "length", exp := 2 }, { symbol := "time", exp := -3 }])
+  -- power=(some [(length, 2), (mass, 1), (time, -3)])
   IO.println s!"power={isq.reduce "power"}"
 
-  -- power.efficiency=(some #[{ symbol := "mass", exp := 0 }, { symbol := "length", exp := 0 }, { symbol := "time", exp := 0 }])
+  -- power.efficiency=(some [])
   IO.println s!"power.efficiency={isq.reduce "power.efficiency"}"
+
+  -- foo=none
+  IO.println s!"foo={isq.reduce "foo"}"
 
 #eval main
