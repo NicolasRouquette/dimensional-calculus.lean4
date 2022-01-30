@@ -3,17 +3,25 @@ import Std.Data
 open Std
 open DimensionalAnalysis
 
--- iso-80000-3 2006:3-1.1
-def length := `[DCalc| length^1/1 ]
+def bases: Array String :=  
+  #[ 
+    -- iso-80000-3 2006:3-1.1
+    "length", 
 
--- iso-80000-3 2006:3-7
-def time := `[DCalc| time^1/1]
+    -- iso-80000-3 2006:3-7
+    "time", 
 
--- iso-80000-4:4.1
-def mass := `[DCalc| m^1/1]
+    -- iso-80000-4:4.1
+    "mass", 
 
-def isq : Context :=
-  Context.mkContext #[
+    "ampere", 
+    "thermodynamic-temperature", 
+    "electric-current", 
+    "amount-of-substance", 
+    "luminous-intensity" 
+  ]
+
+def derivations: Array (String × DCalc) := #[
     -- iso-80000-3 2006:3-1.2
     ("breadth", `[DCalc| length^1/1 ]),
 
@@ -58,6 +66,14 @@ def isq : Context :=
     -- iso-80000-4 2006:4-28
     ("power.efficiency", `[DCalc| power / power ])
   ]
+
+def isq : ContextOrError := Context.mkContext bases derivations
+
+#eval Context.mkContext #[ "a", "a"] #[ ]
+
+#eval Context.mkContext #[ "a" ] #[ ("b", `[DCalc| x^1/1 ]) ]
+
+#eval Context.mkContext #[ "a" ] #[ ("b", `[DCalc| a^1/1 ]), ("b", `[DCalc| a^2/1 ]) ]
 
 def main : IO Unit := do
   -- area=(some [(length, 2)])

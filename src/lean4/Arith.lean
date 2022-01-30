@@ -1,6 +1,27 @@
 import Lean.Data.Rat
 import Std.Data
+import Std.Data.HashSet
 open Std
+
+universe u
+variable {α : Type u}
+
+-- TODO: Where should these HashSet extensions be defined?
+
+def ofList [BEq α] [Hashable α] (l : List α) : HashSet α :=
+  l.foldl (init := HashSet.empty) (fun m p => m.insert p)
+
+def union [BEq α] [Hashable α] (h1: HashSet α) (h2: HashSet α) : HashSet α :=
+  h1.fold (init := h2) (fun h p => h.insert p)
+
+def containsAll [BEq α] [Hashable α] (sup: HashSet α) (sub: HashSet α) : Bool :=
+  sub.fold (init := true) (fun b p => b && sup.contains p)
+
+-- TODO: Can this be generalized to a HashSet of α if there is LT.lt α?
+instance : Repr (HashSet String) where
+  reprPrec hs _ := 
+    let as : Array String := hs.toArray.qsort (fun a b => a < b)
+    as.toList.toString
 
 -- Arithmetic for dimensional calculus
 namespace DimensionalAnalysis
@@ -11,6 +32,17 @@ inductive DCalc : Type
   | div : DCalc -> DCalc -> DCalc
   | power : DCalc -> Lean.Rat -> DCalc
   deriving Repr
+
+namespace DCalc
+
+def symbols (dc: DCalc) : HashSet String :=
+  match dc with
+  | symbol s =>   HashSet.empty.insert s
+  | mul l r =>    union (symbols l) (symbols r)
+  | div l r =>    union (symbols l) (symbols r)
+  | power l r =>  symbols l
+
+end DCalc
 
 declare_syntax_cat dcalc
 
@@ -36,15 +68,22 @@ abbrev DCalcFactor := String × Lean.Rat
 
 abbrev DCalcFactors := HashMap String Lean.Rat
 
-def lt (f1: DCalcFactor) (f2: DCalcFactor): Bool := 
-  f1.fst.data.le f2.fst.data
+instance : ToString DCalcFactor := ⟨fun pair =>  s!"{pair.fst}^{pair.snd}"⟩
+
+instance DCalcFactors.repr : Repr DCalcFactors where
+  reprPrec m _ := m.toList.toString
+
+instance : ToString (String × DCalcFactors) := ⟨fun pair =>  pair.fst ++ "=" ++ (DCalcFactors.repr.reprPrec pair.snd 0).pretty⟩
+
+instance : Repr (HashMap String DCalcFactors) where
+  reprPrec m _ := m.toList.toString
+
+def lt (f1: DCalcFactor) (f2: DCalcFactor): Bool := f1.fst < f2.fst
 
 instance : ToString (Option DCalcFactors) := ⟨fun
   | none => "none"
   | (some fs) => "(some " ++ (fs.toArray.qsort lt).toList.toString ++ ")"⟩
 
-def ToString (pair: String × Lean.Rat) : String :=
-  s!"{pair.fst}^{pair.snd}"
 namespace DCalcFactor
 
 def mult (f: DCalcFactor) (e: Lean.Rat) : DCalcFactor :=
@@ -57,6 +96,7 @@ inductive DCalcExpr : Type
   | mul : DCalcExpr -> DCalcExpr -> DCalcExpr
   | div : DCalcExpr -> DCalcExpr -> DCalcExpr
   | power : DCalcExpr -> Lean.Rat -> DCalcExpr
+  deriving Repr
 
 namespace DCalcExpr
 
@@ -67,6 +107,7 @@ def applyPow (fs: DCalcFactors) (exp: Lean.Rat) : DCalcFactors :=
   let ls : List DCalcFactor := fs.toList.map (powerOf exp)
   HashMap.ofList ls
 
+-- TODO: remove `partial` using well-founded recursion 
 partial def applyMul (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
   if 0 == fs2.size then
     fs1
@@ -83,6 +124,7 @@ partial def applyMul (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
       let fs1b := if 0 == f12.snd.num then fs1a else fs1a.insert f12.fst f12.snd
       applyMul fs1b f2tail
 
+-- TODO: remove `partial` using well-founded recursion 
 partial def applyDiv (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
   if 0 == fs2.size then
     fs1
@@ -120,14 +162,54 @@ def simplify : DCalcExpr -> DCalcFactors
 structure Context where
   base : HashSet String
   derived : HashMap String DCalcFactors
+  deriving Repr
+
+inductive ContextOrError : Type
+  | error: String -> ContextOrError
+  | context: Context -> ContextOrError
+  deriving Repr
 
 namespace Context
 
 def empty : Context := ⟨ HashSet.empty, HashMap.empty ⟩
 
+def scope (ctx: Context) : HashSet String :=
+  ofList (ctx.base.toList ++ ctx.derived.toList.map Prod.fst)
+
 instance : Inhabited Context where
   default := empty
 
+def addBase (coe: ContextOrError) (b: String) : ContextOrError :=
+  match coe with
+  | ContextOrError.error msg => 
+    ContextOrError.error msg
+  | ContextOrError.context ctx =>
+    if ctx.scope.contains b then
+      ContextOrError.error s!"Base symbol '{b}' is already in the context!"
+    else
+      ContextOrError.context ⟨ ctx.base.insert b, ctx.derived ⟩
+
+def addDerivation (coe: ContextOrError) (pair: String × DCalc) : ContextOrError :=
+  match coe with
+  | ContextOrError.error err => 
+    ContextOrError.error err
+  | ContextOrError.context ctx =>
+    let sc : HashSet String := ctx.scope
+    if sc.contains pair.fst then
+      ContextOrError.error s!"Derived symbol '{pair.fst}' is already in the context!"
+    else
+      let ds : HashSet String := DCalc.symbols pair.snd
+      if containsAll sc ds then
+        ContextOrError.context ⟨ ctx.base, ctx.derived.insert pair.fst (simplify (convert pair.snd)) ⟩
+      else
+        let undefined : HashSet String := ds.fold (init := HashSet.empty) (fun u p => if sc.contains p then u else u.insert p)
+        ContextOrError.error s!"The derivation of {pair.fst} refers to the following undefined symbols of the context: {undefined.toList.toString}"
+
+def mkContext (base: Array String) (derivations: Array (String × DCalc)) : ContextOrError :=
+  let withBases := base.foldl addBase (ContextOrError.context ⟨ HashSet.empty, HashMap.empty ⟩)
+  derivations.foldl addDerivation withBases
+  
+-- TODO: remove `partial` using well-founded recursion 
 partial def substitute (ctx: Context) (fs: DCalcFactors) : DCalcFactors :=
   if 0 == fs.size then
     fs
@@ -143,25 +225,17 @@ partial def substitute (ctx: Context) (fs: DCalcFactors) : DCalcFactors :=
 def reduce (ctx: Context) (symbol: String): Option DCalcFactors :=
   (ctx.derived.find? symbol).map (substitute ctx)
 
-def withDerivation (ctx: Context) (symbol: String) (exp: DCalc) : Context := {
-  if ctx.derived.contains symbol then
-    panic! s!"Derived symbol already in the context: {symbol}"
-  else
-    ctx with derived := ctx.derived.insert symbol (simplify (convert exp))
-}
-
-
-def addDerivation (ctx: Context) (pair: String × DCalc) : Context := {
-  if ctx.derived.contains pair.fst then
-    panic! s!"Derived symbol already in the context: {pair.fst}"
-  else
-    ctx with derived := ctx.derived.insert pair.fst (simplify (convert pair.snd))
-}
-
-def mkContext (derivations: Array (String × DCalc)) : Context :=
-  let ctx : Context := ⟨ HashSet.empty, HashMap.empty ⟩
-  derivations.foldl addDerivation ctx
-
 end Context
+
+namespace ContextOrError
+
+def reduce (coe: ContextOrError) (symbol: String): Option DCalcFactors :=
+  match coe with
+  | ContextOrError.error msg => 
+    none
+  | ContextOrError.context ctx =>
+    ctx.reduce symbol
+
+end ContextOrError
 
 end DimensionalAnalysis
