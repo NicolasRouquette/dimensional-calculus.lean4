@@ -107,22 +107,23 @@ def applyPow (fs: DCalcFactors) (exp: Lean.Rat) : DCalcFactors :=
   let ls : List DCalcFactor := fs.toList.map (powerOf exp)
   HashMap.ofList ls
 
--- TODO: remove `partial` using well-founded recursion 
-partial def applyMul (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
-  if 0 == fs2.size then
+def applyMulAux (fs1: DCalcFactors) (l2: List DCalcFactor): DCalcFactors :=
+  match l2 with
+  | List.nil =>
     fs1
-  else
-    let l2 : List DCalcFactor := fs2.toList
-    let f2 := l2.head!
-    let f2tail := HashMap.ofList l2.tail!
+  | List.cons f2 t2 =>
     match fs1.getOp f2.fst with
-    | none =>
-      applyMul (fs1.insert f2.fst f2.snd) f2tail
     | some (f1a : Lean.Rat) =>
       let f12 : DCalcFactor := ⟨ f2.fst, f1a + f2.snd ⟩
       let fs1a := fs1.erase f2.fst
       let fs1b := if 0 == f12.snd.num then fs1a else fs1a.insert f12.fst f12.snd
-      applyMul fs1b f2tail
+      applyMulAux fs1b t2
+    | none =>
+      let fs1b := fs1.insert f2.fst f2.snd
+      applyMulAux fs1b t2
+
+def applyMul (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
+  applyMulAux fs1 fs2.toList
 
 -- TODO: remove `partial` using well-founded recursion 
 partial def applyDiv (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
