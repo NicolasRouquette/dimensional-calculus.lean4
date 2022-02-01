@@ -1,4 +1,4 @@
-import Arith
+import DA.Arith
 import Std.Data
 open Std
 open DimensionalAnalysis
