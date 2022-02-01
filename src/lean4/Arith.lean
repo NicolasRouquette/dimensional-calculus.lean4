@@ -1,6 +1,8 @@
 import Lean.Data.Rat
 import Std.Data
 import Std.Data.HashSet
+import Mathlib.Data.BinaryHeap
+import for_mathlib.BinaryHeap
 open Std
 
 universe u
@@ -35,11 +37,15 @@ inductive DCalc : Type
 
 namespace DCalc
 
-def symbols (dc: DCalc) : HashSet String :=
+abbrev StringLT : String -> String -> Bool := fun (a b: String) => a < b
+
+abbrev StringBinaryHeap := BinaryHeap String StringLT
+
+def symbols (dc: DCalc) : StringBinaryHeap :=
   match dc with
-  | symbol s =>   HashSet.empty.insert s
-  | mul l r =>    union (symbols l) (symbols r)
-  | div l r =>    union (symbols l) (symbols r)
+  | symbol s =>   BinaryHeap.singleton StringLT s
+  | mul l r =>    (symbols l).arr.foldl BinaryHeap.insert (symbols r)
+  | div l r =>    (symbols l).arr.foldl BinaryHeap.insert (symbols r)
   | power l r =>  symbols l
 
 end DCalc
@@ -199,7 +205,7 @@ def addDerivation (coe: ContextOrError) (pair: String × DCalc) : ContextOrError
     if sc.contains pair.fst then
       ContextOrError.error s!"Derived symbol '{pair.fst}' is already in the context!"
     else
-      let ds : HashSet String := DCalc.symbols pair.snd
+      let ds := DCalc.symbols pair.snd
       if containsAll sc ds then
         ContextOrError.context ⟨ ctx.base, ctx.derived.insert pair.fst (simplify (convert pair.snd)) ⟩
       else
