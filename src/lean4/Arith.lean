@@ -40,7 +40,7 @@ def symbols (dc: DCalc) : HashSet String :=
   | symbol s =>   HashSet.empty.insert s
   | mul l r =>    union (symbols l) (symbols r)
   | div l r =>    union (symbols l) (symbols r)
-  | power l r =>  symbols l
+  | power l _ =>  symbols l
 
 end DCalc
 
@@ -61,8 +61,8 @@ macro_rules
   | `(`[DCalc| $x:dcalc * $y:dcalc ]) => `(DCalc.mul `[DCalc| $x] `[DCalc| $y])
   | `(`[DCalc| $x:dcalc / $y:dcalc ]) => `(DCalc.div `[DCalc| $x] `[DCalc| $y])
   | `(`[DCalc| ($x:dcalc) ]) => `(`[DCalc| $x ])
-  | `(`[DCalc| $x:dcalc ^ $n:numLit / $d:numLit ]) => `(DCalc.power `[DCalc| $x] (Lean.mkRat $n $d))
-  | `(`[DCalc| $x:dcalc ^ - $n:numLit / $d:numLit ]) => `(DCalc.power `[DCalc| $x] (Lean.mkRat ( - $n ) $d))
+  | `(`[DCalc| $x:dcalc ^ $n:num / $d:num ]) => `(DCalc.power `[DCalc| $x] (Lean.mkRat $n $d))
+  | `(`[DCalc| $x:dcalc ^ - $n:num / $d:num ]) => `(DCalc.power `[DCalc| $x] (Lean.mkRat ( - $n ) $d))
 
 abbrev DCalcFactor := String × Lean.Rat
 
@@ -232,7 +232,7 @@ namespace ContextOrError
 
 def reduce (coe: ContextOrError) (symbol: String): Option DCalcFactors :=
   match coe with
-  | ContextOrError.error msg => 
+  | ContextOrError.error _ => 
     none
   | ContextOrError.context ctx =>
     ctx.reduce symbol
