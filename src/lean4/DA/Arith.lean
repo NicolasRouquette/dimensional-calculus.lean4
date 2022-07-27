@@ -10,14 +10,23 @@ variable {α : Type u}
 
 -- TODO: Where should these HashSet extensions be defined?
 
+abbrev StringLT : String -> String -> Bool := fun (a b: String) => a < b
+
+abbrev StringBinaryHeap := BinaryHeap String StringLT
+
 def ofList [BEq α] [Hashable α] (l : List α) : HashSet α :=
   l.foldl (init := HashSet.empty) (fun m p => m.insert p)
 
 def union [BEq α] [Hashable α] (h1: HashSet α) (h2: HashSet α) : HashSet α :=
   h1.fold (init := h2) (fun h p => h.insert p)
 
-def containsAll [BEq α] [Hashable α] (sup: HashSet α) (sub: HashSet α) : Bool :=
-  sub.fold (init := true) (fun b p => b && sup.contains p)
+def notContainedIn (sup: HashSet String) (sub: StringBinaryHeap) : HashSet String :=
+  sub.arr.data.foldl 
+    (fun acc a => 
+      if sup.contains a
+        then acc
+        else acc.insert a)
+    HashSet.empty
 
 -- TODO: Can this be generalized to a HashSet of α if there is LT.lt α?
 instance : Repr (HashSet String) where
@@ -37,16 +46,12 @@ inductive DCalc : Type
 
 namespace DCalc
 
-abbrev StringLT : String -> String -> Bool := fun (a b: String) => a < b
-
-abbrev StringBinaryHeap := BinaryHeap String StringLT
-
 def symbols (dc: DCalc) : StringBinaryHeap :=
   match dc with
   | symbol s =>   BinaryHeap.singleton StringLT s
   | mul l r =>    (symbols l).arr.foldl BinaryHeap.insert (symbols r)
   | div l r =>    (symbols l).arr.foldl BinaryHeap.insert (symbols r)
-  | power l r =>  symbols l
+  | power l _ =>  symbols l
 
 end DCalc
 
@@ -67,8 +72,8 @@ macro_rules
   | `(`[DCalc| $x:dcalc * $y:dcalc ]) => `(DCalc.mul `[DCalc| $x] `[DCalc| $y])
   | `(`[DCalc| $x:dcalc / $y:dcalc ]) => `(DCalc.div `[DCalc| $x] `[DCalc| $y])
   | `(`[DCalc| ($x:dcalc) ]) => `(`[DCalc| $x ])
-  | `(`[DCalc| $x:dcalc ^ $n:numLit / $d:numLit ]) => `(DCalc.power `[DCalc| $x] (Lean.mkRat $n $d))
-  | `(`[DCalc| $x:dcalc ^ - $n:numLit / $d:numLit ]) => `(DCalc.power `[DCalc| $x] (Lean.mkRat ( - $n ) $d))
+  | `(`[DCalc| $x:dcalc ^ $n:num / $d:num ]) => `(DCalc.power `[DCalc| $x] (Lean.mkRat $n $d))
+  | `(`[DCalc| $x:dcalc ^ - $n:num / $d:num ]) => `(DCalc.power `[DCalc| $x] (Lean.mkRat ( - $n ) $d))
 
 abbrev DCalcFactor := String × Lean.Rat
 
@@ -118,7 +123,7 @@ def applyMulAux (fs1: DCalcFactors) (l2: List DCalcFactor): DCalcFactors :=
   | List.nil =>
     fs1
   | List.cons f2 t2 =>
-    match fs1.getOp f2.fst with
+    match fs1.find? f2.fst with
     | some (f1a : Lean.Rat) =>
       let f12 : DCalcFactor := ⟨ f2.fst, f1a + f2.snd ⟩
       let fs1a := fs1.erase f2.fst
@@ -139,7 +144,7 @@ partial def applyDiv (fs1: DCalcFactors) (fs2: DCalcFactors) : DCalcFactors :=
     let l2 : List DCalcFactor := fs2.toList
     let f2 := l2.head!
     let f2tail := HashMap.ofList l2.tail!
-    match fs1.getOp f2.fst with
+    match fs1.find? f2.fst with
     | none =>
       applyDiv (fs1.insert f2.fst (-f2.snd)) f2tail
     | some (f1a : Lean.Rat) =>
@@ -206,10 +211,10 @@ def addDerivation (coe: ContextOrError) (pair: String × DCalc) : ContextOrError
       ContextOrError.error s!"Derived symbol '{pair.fst}' is already in the context!"
     else
       let ds := DCalc.symbols pair.snd
-      if containsAll sc ds then
+      let undefined := notContainedIn sc ds
+      if undefined.isEmpty then
         ContextOrError.context ⟨ ctx.base, ctx.derived.insert pair.fst (simplify (convert pair.snd)) ⟩
       else
-        let undefined : HashSet String := ds.fold (init := HashSet.empty) (fun u p => if sc.contains p then u else u.insert p)
         ContextOrError.error s!"The derivation of {pair.fst} refers to the following undefined symbols of the context: {undefined.toList.toString}"
 
 def mkContext (base: Array String) (derivations: Array (String × DCalc)) : ContextOrError :=
@@ -218,16 +223,15 @@ def mkContext (base: Array String) (derivations: Array (String × DCalc)) : Cont
   
 -- TODO: remove `partial` using well-founded recursion 
 partial def substitute (ctx: Context) (fs: DCalcFactors) : DCalcFactors :=
-  if 0 == fs.size then
+  match fs.toList with
+  | [] =>
     fs
-  else
-    let v := fs.toList.head!
-    let tail := HashMap.ofList fs.toList.tail!
-    if let some vs := ctx.derived.find? v.fst then
-      substitute ctx (DCalcExpr.applyMul (DCalcExpr.applyPow vs v.snd) tail)
+  | h :: tl =>
+    let tail := HashMap.ofList tl
+    if let some vs := ctx.derived.find? h.fst then
+      substitute ctx (DCalcExpr.applyMul (DCalcExpr.applyPow vs h.snd) tail)
     else
-      let ts := substitute ctx tail
-      DCalcExpr.applyMul (HashMap.ofList (List.cons ⟨ v.fst, v.snd ⟩ List.nil)) ts
+      DCalcExpr.applyMul (HashMap.ofList (List.cons ⟨ h.fst, h.snd ⟩ List.nil)) (substitute ctx tail)
 
 def reduce (ctx: Context) (symbol: String): Option DCalcFactors :=
   (ctx.derived.find? symbol).map (substitute ctx)
@@ -238,7 +242,7 @@ namespace ContextOrError
 
 def reduce (coe: ContextOrError) (symbol: String): Option DCalcFactors :=
   match coe with
-  | ContextOrError.error msg => 
+  | ContextOrError.error _ => 
     none
   | ContextOrError.context ctx =>
     ctx.reduce symbol

@@ -1,7 +1,7 @@
 import Lake
 open Lake DSL
 
-package da where
+package DA where
   packagesDir := "build.lean4_packages"
   srcDir := "src" / "lean4"
   buildDir := "build.lean4"
