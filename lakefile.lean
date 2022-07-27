@@ -1,9 +1,14 @@
 import Lake
-open System Lake DSL
+open Lake DSL
 
-package Arith where
-  packagesDir := FilePath.mk "build.lean4_packages"
-  srcDir := FilePath.mk "src" / "lean4"
-  buildDir := FilePath.mk "build.lean4"
-  dependencies := #[]
-    
+package Arith {
+  srcDir := "src" / "lean4"
+}
+
+lean_lib Arith {
+}
+
+@[defaultTarget]
+lean_exe arith {
+  root := `Main
+}
